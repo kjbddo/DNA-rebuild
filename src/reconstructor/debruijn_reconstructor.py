@@ -5,8 +5,8 @@ from src.reconstructor.dna_reconstruction_interface import DNAReconstructor
 from src.sequence_reconstruction import read_reads_streaming
 
 class DeBruijnReconstructor(DNAReconstructor):
-    def __init__(self, k: int = 31, min_coverage: int = 2, chunk_size: int = 10**6):
-        super().__init__(k, min_coverage, chunk_size)
+    def __init__(self, k: int = 31, min_coverage: int = 2, chunk_size: int = 10**6, read_length: int = 100):
+        super().__init__(k, min_coverage, chunk_size, read_length)
         self.base_to_num = {'A': 0, 'C': 1, 'G': 2, 'T': 3}
         self.num_to_base = {0: 'A', 1: 'C', 2: 'G', 3: 'T'}
     
@@ -37,7 +37,7 @@ class DeBruijnReconstructor(DNAReconstructor):
         
         # 첫 번째 패스: k-mer 빈도 계산
         print("\nk-mer 빈도 계산 중...")
-        for reads_chunk in read_reads_streaming(reads_file):
+        for reads_chunk in read_reads_streaming(reads_file, read_length=self.read_length):
             for read in reads_chunk:
                 read_str = ''.join(self.num_to_base[b] for b in read)
                 for i in range(len(read_str) - self.k + 1):

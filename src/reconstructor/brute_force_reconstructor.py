@@ -5,8 +5,8 @@ from src.reconstructor.dna_reconstruction_interface import DNAReconstructor
 from src.sequence_reconstruction import read_reads_streaming
 
 class BruteForceReconstructor(DNAReconstructor):
-    def __init__(self, k: int = 31, min_coverage: int = 2, chunk_size: int = 10**6):
-        super().__init__(k, min_coverage, chunk_size)
+    def __init__(self, k: int = 31, min_coverage: int = 2, chunk_size: int = 10**6, read_length: int = 100):
+        super().__init__(k, min_coverage, chunk_size, read_length)
         self.base_to_num = {'A': 0, 'C': 1, 'G': 2, 'T': 3}
         self.num_to_base = {0: 'A', 1: 'C', 2: 'G', 3: 'T'}
     
@@ -15,11 +15,12 @@ class BruteForceReconstructor(DNAReconstructor):
         reads = []
         print("리드 데이터 로딩 중...")
         
-        # 리드 데이터 로드
-        for reads_chunk in read_reads_streaming(reads_file):
+        # 리드 데이터 로드 및 전처리
+        for reads_chunk in read_reads_streaming(reads_file, read_length=self.read_length):
             for read in reads_chunk:
                 read_str = ''.join(self.num_to_base[b] for b in read)
-                reads.append(read_str)
+                if len(read_str) >= self.k:  # k-mer 길이 이상인 리드만 사용
+                    reads.append(read_str)
         
         print(f"총 {len(reads)}개의 리드 로드 완료")
         
@@ -60,14 +61,21 @@ class BruteForceReconstructor(DNAReconstructor):
         
         for read in reads[1:]:
             max_overlap = 0
-            # 현재 시퀀스의 접미사와 다음 리드의 접두사 간의 최대 중첩 찾기
-            for i in range(min(len(result), len(read))):
-                if result.endswith(read[:i+1]):
-                    max_overlap = i + 1
+            best_score = 0
             
-            # 중첩된 부분을 제외하고 병합
-            result += read[max_overlap:]
-        
+            # 최소 중첩 길이(k) 이상인 경우만 고려
+            for i in range(self.k, min(len(result), len(read)) + 1):
+                if result.endswith(read[:i]):
+                    overlap_score = self._calculate_overlap_score(result[-i:], read[:i])
+                    if overlap_score > best_score:
+                        max_overlap = i
+                        best_score = overlap_score
+            
+            if max_overlap >= self.k:  # 최소 중첩 길이 조건 확인
+                result += read[max_overlap:]
+            else:
+                result += 'N' + read  # 신뢰할 수 없는 중첩은 구분자로 표시
+                
         return result
     
     def _find_overlap(self, str1: str, str2: str) -> int:
