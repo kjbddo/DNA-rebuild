@@ -1,3 +1,4 @@
+import glob
 import numpy as np
 import random
 import os
@@ -106,22 +107,20 @@ class DNASequence:
         os.makedirs(reads_dir, exist_ok=True)
         
         # 리드 길이를 포함한 파일명 생성
-        base_filename = f"reads_{read_length}bp"
+        base_filename = f"{sequence_file.split('_')[1].split('.')[0]}_reads_{read_length}bp"
         reads_bin = os.path.join(reads_dir, f"{base_filename}.bin")
-        reads_txt = os.path.join(reads_dir, f"{base_filename}.txt")
         
         # 동일한 리드 길이의 가장 최근 파일 찾기
         existing_files = [f for f in os.listdir(reads_dir) if f.startswith(f"reads_{read_length}bp_") and f.endswith('.bin')]
         if existing_files:
             latest_file = max(existing_files)
             existing_bin = os.path.join(reads_dir, latest_file)
-            existing_txt = os.path.join(reads_dir, latest_file.replace('.bin', '.txt'))
+            existing_txt = os.path.join(reads_dir, latest_file.replace('.bin'))
             
             if os.path.exists(existing_bin) and os.path.exists(existing_txt):
                 print(f"\n동일한 리드 길이의 기존 파일을 발견했습니다:")
                 print(f"바이너리 파일: {existing_bin}")
-                print(f"텍스트 파일: {existing_txt}")
-                return existing_bin, existing_txt
+                return existing_bin
         
         try:
             with open(sequence_file, 'rb') as f:
@@ -156,18 +155,17 @@ class DNASequence:
                     
                     # 청크가 차면 파일에 저장
                     if len(chunk_reads) >= chunk_size:
-                        self._save_reads_chunk(chunk_reads, reads_bin, reads_txt)
+                        self._save_reads_chunk(chunk_reads, reads_bin)
                         chunk_reads = []
                 
                 # 남은 리드 저장
                 if chunk_reads:
-                    self._save_reads_chunk(chunk_reads, reads_bin, reads_txt)
+                    self._save_reads_chunk(chunk_reads, reads_bin)
                 
                 print(f"\n\n리드 생성 완료!")
                 print(f"바이너리 파일: {reads_bin}")
-                print(f"텍스트 파일: {reads_txt}")
                 
-                return reads_bin, reads_txt
+                return reads_bin
                 
         except FileNotFoundError:
             print(f"시퀀스 파일을 찾을 수 없습니다: {sequence_file}")
@@ -183,14 +181,38 @@ class DNASequence:
             for read in chunk_reads:
                 read.tofile(bin_f)
         
-        # 텍스트로 저장
-        with open(txt_path, 'a') as txt_f:
-            for read in chunk_reads:
-                read_str = ''.join(self.base_map[b] for b in read)
-                txt_f.write(read_str + '\n')
+        ## 텍스트로 저장
+        #with open(txt_path, 'a') as txt_f:
+        #    for read in chunk_reads:
+        #        read_str = ''.join(self.base_map[b] for b in read)
+        #        txt_f.write(read_str + '\n')
+                
+    def find_file_pairs(self) -> List[Tuple[str, str, int]]:
+        """리드 파일과 해당하는 원본 파일, 리드 길이를 찾아 반환"""
+        pairs = []
+        
+        # reads 디렉토리의 모든 .txt 파일 검색
+        read_files = glob.glob(os.path.join(self.reads_dir, '*.bin'))
+        
+        for read_file in read_files:
+            # 파일명에서 시퀀스 길이와 리드 길이 추출
+            filename = os.path.basename(read_file)
+            if '_reads_' in filename:
+                sequence_length = filename.split('_')[0]
+                read_length = int(filename.split('_reads_')[1].split('bp')[0])
+                
+                # 해당하는 원본 파일 찾기
+                original_file = os.path.join(self.original_dir, f'sequence_{sequence_length}bp.bin')
+                
+                if os.path.exists(original_file):
+                    pairs.append((read_file, original_file, read_length))
+        
+        return pairs
 
 if __name__ == "__main__":
     generator = DNASequence()
     bin_path, txt_path = generator.save_sequence(10000, "test.bin")
-    print(f"생성된 파일: {bin_path}, {txt_path}")
+    print(f"생성된 파일: {bin_path}")
+    bin_path = generator.save_reads(bin_path, 100, 30, 1000)
+    print(f"생성된 파일: {bin_path}")
     

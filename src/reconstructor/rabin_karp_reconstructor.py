@@ -6,36 +6,38 @@ from src.sequence_reconstruction import read_reads_streaming
 class RabinKarpReconstructor(DNAReconstructor):
     def __init__(self, k: int = 31, min_coverage: int = 2, chunk_size: int = 10**6, read_length: int = 100):
         super().__init__(k, min_coverage, chunk_size, read_length)
-        self.base_to_num = {'A': 0, 'C': 1, 'G': 2, 'T': 3}
-        self.num_to_base = {0: 'A', 1: 'C', 2: 'G', 3: 'T'}
+        self.base_to_num = {'A': 0, 'T': 1, 'C': 2, 'G': 3}
+        self.num_to_base = {0: 'A', 1: 'T', 2: 'C', 3: 'G'}
         self.prime = 101
         self.base = 256
     
     def reconstruct(self, reads_file: str) -> np.ndarray:
-        """Rabin-Karp 알고리즘을 사용한 시퀀스 재구성"""
+        """Rabin-Karp 알고리즘을 사용하여 DNA 시퀀스 재구성"""
         reads = []
         print("리드 데이터 로딩 중...")
         
+        # 바이너리 파일에서 리드 데이터 로드
         for reads_chunk in read_reads_streaming(reads_file, read_length=self.read_length):
-            for read in reads_chunk:
-                read_str = ''.join(self.num_to_base[b] for b in read)
-                reads.append(read_str)
+            reads.extend(reads_chunk)
         
         print(f"총 {len(reads)}개의 리드 로드 완료")
         
-        # 첫 번째 리드로 시작
-        reconstructed = reads[0]
+        # 리드를 문자열로 변환
+        reads_str = [self._convert_read_to_string(read) for read in reads]
         
-        print("시퀀스 재구성 중...")
-        for i, read in enumerate(reads[1:], 1):
-            if i % 1000 == 0:
-                print(f"진행률: {i/len(reads)*100:.1f}%")
-            
-            overlap = self._find_overlap(reconstructed, read)
-            reconstructed += read[overlap:]
+        # Rabin-Karp 알고리즘으로 시퀀스 재구성
+        sequence = self._reconstruct_sequence(reads_str)
+        
+        if not sequence:
+            print("시퀀스 재구성 실패!")
+            return np.array([], dtype=np.uint8)
         
         print("시퀀스 재구성 완료")
-        return np.array([self.base_to_num[b] for b in reconstructed], dtype=np.uint8)
+        return np.array([self.base_to_num[b] for b in sequence], dtype=np.uint8)
+    
+    def _convert_read_to_string(self, read: np.ndarray) -> str:
+        """숫자 배열을 염기서열 문자열로 변환"""
+        return ''.join(self.num_to_base[b] for b in read)
     
     def _calculate_hash(self, s: str) -> int:
         """문자열의 해시값 계산"""

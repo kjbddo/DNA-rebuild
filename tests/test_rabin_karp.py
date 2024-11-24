@@ -25,8 +25,15 @@ class TestRabinKarpReconstructor(unittest.TestCase):
         self.coverage = 30
         
         # 테스트 파일 생성
-        self.bin_path, self.txt_path = self.generator.save_sequence(
+        self.bin_path, _ = self.generator.save_sequence(
             self.sequence_length, f"test_rabin_karp_{self.read_length}.bin")
+        
+        # 리드 파일 생성
+        self.reads_bin, _ = self.generator.save_reads(
+            self.bin_path,
+            read_length=self.read_length,
+            coverage=self.coverage
+        )
     
     def test_rabin_karp_reconstruction(self):
         # Rabin-Karp 재구성기 초기화
@@ -37,7 +44,7 @@ class TestRabinKarpReconstructor(unittest.TestCase):
         )
         
         # 시퀀스 재구성
-        reconstructed = reconstructor.reconstruct(self.txt_path)
+        reconstructed = reconstructor.reconstruct(self.reads_bin)
         
         # 정확도 검증
         accuracy = reconstructor.validate(self.bin_path, reconstructed)

@@ -27,8 +27,15 @@ class TestKMPReconstructor(unittest.TestCase):
         self.coverage = 30
         
         # 테스트 파일 생성
-        self.bin_path, self.txt_path = self.generator.save_sequence(
+        self.bin_path, _ = self.generator.save_sequence(
             self.sequence_length, f"test_kmp_{self.read_length}.bin")
+        
+        # 리드 파일 생성
+        self.reads_bin, _ = self.generator.save_reads(
+            self.bin_path,
+            read_length=self.read_length,
+            coverage=self.coverage
+        )
     
     def test_kmp_reconstruction(self):
         """KMP 알고리즘 테스트"""
@@ -41,7 +48,7 @@ class TestKMPReconstructor(unittest.TestCase):
         )
         
         print("\n1. 시퀀스 재구성 시작...")
-        reconstructed = reconstructor.reconstruct(self.txt_path)
+        reconstructed = reconstructor.reconstruct(self.reads_bin)
         
         print("\n2. 정확도 검증 중...")
         accuracy = reconstructor.validate(self.bin_path, reconstructed)

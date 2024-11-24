@@ -7,100 +7,68 @@ from src.sequence_reconstruction import read_reads_streaming
 class DeBruijnReconstructor(DNAReconstructor):
     def __init__(self, k: int = 31, min_coverage: int = 2, chunk_size: int = 10**6, read_length: int = 100):
         super().__init__(k, min_coverage, chunk_size, read_length)
-        self.base_to_num = {'A': 0, 'C': 1, 'G': 2, 'T': 3}
-        self.num_to_base = {0: 'A', 1: 'C', 2: 'G', 3: 'T'}
+        self.base_to_num = {'A': 0, 'T': 1, 'C': 2, 'G': 3}
+        self.num_to_base = {0: 'A', 1: 'T', 2: 'C', 3: 'G'}
     
     def reconstruct(self, reads_file: str) -> np.ndarray:
-        """DBG 알고리즘을 사용한 시퀀스 재구성"""
-        print("De Bruijn 그래프 구성 중...")
-        graph = self._construct_graph(reads_file)
-        print(f"초기 그래프 생성 완료 (노드 수: {len(graph)})")
+        """De Bruijn 그래프를 사용하여 DNA 시퀀스 재구성"""
+        reads = []
+        print("리드 데이터 로딩 중...")
         
-        print("그래프 단순화 중...")
-        graph = self._simplify_graph(graph)
-        print(f"단순화 후 노드 수: {len(graph)}")
+        # 바이너리 파일에서 리드 데이터 로드
+        for reads_chunk in read_reads_streaming(reads_file, read_length=self.read_length):
+            reads.extend(reads_chunk)
         
-        print("오일러 경로 찾는 중...")
-        path = self._find_eulerian_path(graph)
-        print("경로 찾기 완료")
+        print(f"총 {len(reads)}개의 리드 로드 완료")
         
-        if not path:
-            print("경로를 찾을 수 없습니다!")
+        # 리드를 문자열로 변환
+        reads_str = [self._convert_read_to_string(read) for read in reads]
+        
+        # De Bruijn 그래프 구성
+        graph = self._build_graph(reads_str)
+        
+        # 오일러 경로 찾기
+        path = self._find_euler_path(graph)
+        
+        # 경로를 시퀀스로 변환
+        sequence = self._path_to_sequence(path)
+        
+        # numpy 배열의 길이로 검사
+        if len(sequence) == 0:
+            print("시퀀스 재구성 실패!")
             return np.array([], dtype=np.uint8)
         
-        return self._path_to_sequence(path)
+        print("시퀀스 재구성 완료")
+        return np.array([self.base_to_num[b] for b in sequence], dtype=np.uint8)
     
-    def _construct_graph(self, reads_file: str) -> Dict:
+    def _convert_read_to_string(self, read: np.ndarray) -> str:
+        """숫자 배열을 염기서열 문자열로 변환"""
+        return ''.join(self.num_to_base[b] for b in read)
+    
+    def _build_graph(self, reads_str: List[str]) -> Dict:
         """De Bruijn 그래프 구성"""
         kmer_freq = defaultdict(int)
         edges = defaultdict(lambda: defaultdict(int))
         
         # 첫 번째 패스: k-mer 빈도 계산
         print("\nk-mer 빈도 계산 중...")
-        for reads_chunk in read_reads_streaming(reads_file, read_length=self.read_length):
-            for read in reads_chunk:
-                read_str = ''.join(self.num_to_base[b] for b in read)
-                for i in range(len(read_str) - self.k + 1):
-                    kmer = read_str[i:i+self.k]
-                    kmer_freq[kmer] += 1
+        for read in reads_str:
+            for i in range(len(read) - self.k + 1):
+                kmer = read[i:i+self.k]
+                kmer_freq[kmer] += 1
         
         # 두 번째 패스: 그래프 구성
-        for reads_chunk in read_reads_streaming(reads_file):
-            for read in reads_chunk:
-                read_str = ''.join(self.num_to_base[b] for b in read)
-                for i in range(len(read_str) - self.k + 1):
-                    kmer = read_str[i:i+self.k]
-                    if kmer_freq[kmer] >= self.min_coverage:
-                        prefix = kmer[:-1]
-                        suffix = kmer[1:]
-                        edges[prefix][suffix] += kmer_freq[kmer]
+        for read in reads_str:
+            for i in range(len(read) - self.k + 1):
+                kmer = read[i:i+self.k]
+                if kmer_freq[kmer] >= self.min_coverage:
+                    prefix = kmer[:-1]
+                    suffix = kmer[1:]
+                    edges[prefix][suffix] += kmer_freq[kmer]
         
         return edges
     
-    def _simplify_graph(self, graph: Dict) -> Dict:
-        """그래프 단순화"""
-        def remove_dead_ends(g: Dict, max_length: int = 20) -> Dict:
-            changed = True
-            while changed:
-                changed = False
-                dead_ends = []
-                for node in g:
-                    if len(g[node]) == 0:  # 진출 엣지 없음
-                        in_degree = sum(1 for n in g if node in g[n])
-                        if in_degree == 1:  # 진입 엣지가 하나인 경우만
-                            dead_ends.append(node)
-                            changed = True
-                
-                for node in dead_ends:
-                    del g[node]
-            return g
-        
-        def merge_bubbles(g: Dict, similarity_threshold: float = 0.9) -> Dict:
-            changed = True
-            while changed:
-                changed = False
-                for node in list(g.keys()):
-                    if len(g[node]) > 1:  # 분기점
-                        paths = self._find_bubble_paths(g, node)
-                        if len(paths) > 1:
-                            # 유사도가 높은 경로 병합
-                            main_path = max(paths, key=len)
-                            for path in paths:
-                                if path != main_path:
-                                    similarity = self._calculate_path_similarity(path, main_path)
-                                    if similarity >= similarity_threshold:
-                                        for n in path[1:-1]:
-                                            if n in g:
-                                                del g[n]
-                                        changed = True
-            return g
-        
-        # 그래프 단순화 적용
-        graph = remove_dead_ends(graph)
-        graph = merge_bubbles(graph)
-        return graph
-    
-    def _find_eulerian_path(self, graph: Dict) -> List[str]:
+    def _find_euler_path(self, graph: Dict) -> List[str]:
         """오일러 경로 찾기"""
         if not graph:
             return []
