@@ -82,11 +82,16 @@ class DNASequence:
     def generate_reads_stream(self, file: BinaryIO, total_length: int, read_length: int,
                             coverage: int = 30) -> Generator[np.ndarray, None, None]:
         """스트리밍 방식으로 리드 생성"""
-        read_count = (total_length * coverage) // read_length
-        max_start_pos = total_length - read_length
-        step_size = max(1, max_start_pos // (read_count - 1))
+        # 모든 계산을 정수형으로 보장
+        read_count = int((total_length * coverage) // read_length)
+        max_start_pos = int(total_length - read_length)
         
-        # 첫 번째와 마지막 리드 표시를 위한 변수
+        # read_count가 1보다 작으면 안됨
+        if read_count <= 1:
+            step_size = 1
+        else:
+            step_size = max(1, int(max_start_pos // (read_count - 1)))
+        
         first_read = True
         
         for start_pos in range(0, max_start_pos + 1, step_size):
@@ -109,6 +114,7 @@ class DNASequence:
         # 리드 길이를 포함한 파일명 생성
         base_filename = f"{sequence_file.split('_')[1].split('.')[0]}_reads_{read_length}bp"
         reads_bin = os.path.join(reads_dir, f"{base_filename}.bin")
+        reads_txt = os.path.join(reads_dir, f"{base_filename}.txt")
         
         # 동일한 리드 길이의 가장 최근 파일 찾기
         existing_files = [f for f in os.listdir(reads_dir) if f.startswith(f"reads_{read_length}bp_") and f.endswith('.bin')]
@@ -120,7 +126,7 @@ class DNASequence:
             if os.path.exists(existing_bin) and os.path.exists(existing_txt):
                 print(f"\n동일한 리드 길이의 기존 파일을 발견했습니다:")
                 print(f"바이너리 파일: {existing_bin}")
-                return existing_bin
+                return existing_bin, existing_txt
         
         try:
             with open(sequence_file, 'rb') as f:
@@ -135,7 +141,7 @@ class DNASequence:
                 print(f"생성할 총 리드 수: {read_count:,}")
                 
                 # 헤더 정보 저장
-                with open(reads_bin, 'wb') as bin_f:
+                with open(reads_bin, 'wb') as bin_f, open(reads_txt, 'w') as txt_f:
                     np.array([read_length, read_count], dtype=np.uint64).tofile(bin_f)
                 
                 # 청크 단위로 리드 생성 및 저장
@@ -155,17 +161,17 @@ class DNASequence:
                     
                     # 청크가 차면 파일에 저장
                     if len(chunk_reads) >= chunk_size:
-                        self._save_reads_chunk(chunk_reads, reads_bin)
+                        self._save_reads_chunk(chunk_reads, reads_bin, reads_txt)
                         chunk_reads = []
                 
                 # 남은 리드 저장
                 if chunk_reads:
-                    self._save_reads_chunk(chunk_reads, reads_bin)
+                    self._save_reads_chunk(chunk_reads, reads_bin, reads_txt)
                 
                 print(f"\n\n리드 생성 완료!")
                 print(f"바이너리 파일: {reads_bin}")
                 
-                return reads_bin
+                return reads_bin, reads_txt
                 
         except FileNotFoundError:
             print(f"시퀀스 파일을 찾을 수 없습니다: {sequence_file}")
@@ -181,11 +187,11 @@ class DNASequence:
             for read in chunk_reads:
                 read.tofile(bin_f)
         
-        ## 텍스트로 저장
-        #with open(txt_path, 'a') as txt_f:
-        #    for read in chunk_reads:
-        #        read_str = ''.join(self.base_map[b] for b in read)
-        #        txt_f.write(read_str + '\n')
+        # 텍스트로 저장
+        with open(txt_path, 'a') as txt_f:
+            for read in chunk_reads:
+                read_str = ''.join(self.base_map[b] for b in read)
+                txt_f.write(read_str + '\n')
                 
     def find_file_pairs(self) -> List[Tuple[str, str, int]]:
         """리드 파일과 해당하는 원본 파일, 리드 길이를 찾아 반환"""
@@ -213,6 +219,6 @@ if __name__ == "__main__":
     generator = DNASequence()
     bin_path, txt_path = generator.save_sequence(10000, "test.bin")
     print(f"생성된 파일: {bin_path}")
-    bin_path = generator.save_reads(bin_path, 100, 30, 1000)
+    bin_path, txt_path = generator.save_reads(bin_path, 100, 30, 1000)
     print(f"생성된 파일: {bin_path}")
     

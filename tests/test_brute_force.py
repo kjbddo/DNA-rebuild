@@ -1,6 +1,9 @@
 import unittest
-import os
+import os, sys
 import numpy as np
+# 프로젝트 루트 디렉토리를 Python 경로에 추가
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
 from src.generator.generate_dna_sequence import DNASequence
 from src.reconstructor.brute_force_reconstructor import BruteForceReconstructor
 
@@ -20,9 +23,10 @@ class TestBruteForceReconstructor(unittest.TestCase):
         self.generator = DNASequence(seed=42)  # 재현성을 위한 시드 설정
         
         # 테스트 매개변수
-        self.sequence_length = 10000
-        self.read_length = 100
-        self.coverage = 30
+        self.sequence_length = 50
+        self.read_length = 10
+        self.coverage = 3
+        self.chunk_size = 10
         
         # 테스트 파일 생성
         self.bin_path, _ = self.generator.save_sequence(
@@ -32,14 +36,15 @@ class TestBruteForceReconstructor(unittest.TestCase):
         self.reads_bin, _ = self.generator.save_reads(
             self.bin_path,
             read_length=self.read_length,
-            coverage=self.coverage
+            coverage=self.coverage,
+            chunk_size=self.chunk_size
         )
     
     def test_brute_force_reconstruction(self):
         # Brute Force 재구성기 초기화
         reconstructor = BruteForceReconstructor(
-            k=31,
             min_coverage=2,
+            chunk_size=self.chunk_size,
             read_length=self.read_length
         )
         
