@@ -14,14 +14,14 @@ from src.sequence_reconstruction import (
 )
 
 class RabinKarpReconstructor:
-    def __init__(self, k: int = 31, min_coverage: int = 2, read_length: int = 100):
-        self.k = k
+    def __init__(self, min_coverage: int = 2, read_length: int = 100, max_mismatches: int = 2):
         self.min_coverage = min_coverage
         self.read_length = read_length
-        self.base_map = {0: 'A', 1: 'T', 2: 'C', 3: 'G', 4: 'N'}
-        self.base_reverse_map = {'A': 0, 'T': 1, 'C': 2, 'G': 3, 'N': 4}
-        self.prime = 101  # 해시 함수에 사용할 소수
-        self.base = 5     # DNA는 A,T,C,G,N 5개 문자 사용
+        self.max_mismatches = max_mismatches  # 허용할 최대 미스매치 수
+        self.base_map = {0: 'A', 1: 'T', 2: 'C', 3: 'G'}
+        self.base_reverse_map = {'A': 0, 'T': 1, 'C': 2, 'G': 3}
+        self.prime = 101
+        self.base = 4     # DNA는 A,T,C,G 4개 문자만 사용
 
     def calculate_hash(self, sequence: np.ndarray, length: int) -> int:
         """주어진 시퀀스의 해시값 계산"""
@@ -39,26 +39,29 @@ class RabinKarpReconstructor:
         return hash_value if hash_value >= 0 else hash_value + self.prime
 
     def find_overlap_rabin_karp(self, read1: np.ndarray, read2: np.ndarray, min_overlap: int = 10) -> int:
-        """Rabin-Karp 알고리즘을 사용하여 두 리드 간의 최대 중첩 길이를 찾음"""
+        """Rabin-Karp 알고리즘을 사용하여 두 리드 간의 최대 중첩 길이를 찾음 (미스매치 허용)"""
         read1_len = len(read1)
         read2_len = len(read2)
         max_overlap = 0
         
-        # read1의 접미사와 read2의 접두사 비교
         for overlap_len in range(min(read1_len, read2_len), min_overlap-1, -1):
             pattern = read2[:overlap_len]
             text = read1[-overlap_len:]
             
-            # 패턴과 텍스트의 초기 해시값 계산
             pattern_hash = self.calculate_hash(pattern, overlap_len)
             text_hash = self.calculate_hash(text, overlap_len)
             
-            # 해시값이 같고 실제 시퀀스도 같으면 중첩 발견
-            if pattern_hash == text_hash and np.array_equal(pattern, text):
+            # 해시값이 같거나 시퀀스가 허용된 미스매치 수 이내인 경우
+            if pattern_hash == text_hash or self._check_mismatches(pattern, text):
                 max_overlap = overlap_len
                 break
                 
         return max_overlap
+
+    def _check_mismatches(self, seq1: np.ndarray, seq2: np.ndarray) -> bool:
+        """두 시퀀스 간의 미스매치 수를 확인"""
+        mismatches = np.sum(seq1 != seq2)
+        return mismatches <= self.max_mismatches
 
     def reconstruct(self, reads_file: str) -> np.ndarray:
         """Rabin-Karp 알고리즘을 사용한 시퀀스 재구성"""
@@ -125,8 +128,8 @@ class RabinKarpReconstructor:
 
 if __name__ == "__main__":
     generator = DNASequence()
-    bin_path, txt_path = generator.save_sequence(10000, "test.bin")
-    reads_bin_path, reads_txt_path = generator.save_reads(bin_path, 100, 50, 10000)
+    bin_path, txt_path = generator.save_sequence(10**5, "test.bin")
+    reads_bin_path, reads_txt_path = generator.save_reads(bin_path, 50, 25, 10**5)
     reconstructor = RabinKarpReconstructor()
     
     start_time = time.time()

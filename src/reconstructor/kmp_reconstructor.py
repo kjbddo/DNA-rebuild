@@ -14,12 +14,12 @@ from src.sequence_reconstruction import (
 )
 
 class KMPReconstructor:
-    def __init__(self, k: int = 31, min_coverage: int = 2, read_length: int = 100):
-        self.k = k
+    def __init__(self, min_coverage: int = 2, read_length: int = 100, max_mismatches: int = 2):
         self.min_coverage = min_coverage
         self.read_length = read_length
-        self.base_map = {0: 'A', 1: 'T', 2: 'C', 3: 'G', 4: 'N'}
-        self.base_reverse_map = {'A': 0, 'T': 1, 'C': 2, 'G': 3, 'N': 4}
+        self.max_mismatches = max_mismatches
+        self.base_map = {0: 'A', 1: 'T', 2: 'C', 3: 'G'}
+        self.base_reverse_map = {'A': 0, 'T': 1, 'C': 2, 'G': 3}
 
     def compute_lps(self, pattern: np.ndarray) -> List[int]:
         """KMP 알고리즘의 LPS(Longest Proper Prefix which is also Suffix) 배열 계산"""
@@ -47,7 +47,7 @@ class KMPReconstructor:
         return lps
 
     def find_overlap_kmp(self, read1: np.ndarray, read2: np.ndarray, min_overlap: int = 10) -> int:
-        """KMP 알고리즘을 사용하여 두 리드 간의 최대 중첩 길이를 찾음"""
+        """KMP 알고리즘을 사용하여 두 리드 간의 최대 중첩 길이를 찾음 (미스매치 허용)"""
         read1_len = len(read1)
         read2_len = len(read2)
         max_overlap = 0
@@ -57,7 +57,11 @@ class KMPReconstructor:
             pattern = read2[:overlap_len]
             text = read1[-overlap_len:]
             
-            if np.array_equal(pattern, text):
+            # 미스매치 수 계산
+            mismatches = np.sum(pattern != text)
+            
+            # 미스매치 수가 허용 범위 이내인 경우 중첩으로 인정
+            if mismatches <= self.max_mismatches:
                 max_overlap = overlap_len
                 break
                 
@@ -129,8 +133,8 @@ class KMPReconstructor:
     
 if __name__ == "__main__":
     generator = DNASequence()
-    bin_path, txt_path = generator.save_sequence(10000, "test.bin")
-    reads_bin_path, reads_txt_path = generator.save_reads(bin_path, 100, 50, 10000)
+    bin_path, txt_path = generator.save_sequence(10**4, "test.bin")
+    reads_bin_path, reads_txt_path = generator.save_reads(bin_path, 50, 25, 10**4)
     reconstructor = KMPReconstructor()
     
     start_time = time.time()

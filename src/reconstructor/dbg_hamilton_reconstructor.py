@@ -16,12 +16,13 @@ from src.sequence_reconstruction import (
 )
 
 class DBGHamiltonReconstructor:
-    def __init__(self, k: int = 31, min_coverage: int = 2, read_length: int = 100):
+    def __init__(self, k: int = 31, min_coverage: int = 2, read_length: int = 100, max_mismatches: int = 2):
         self.k = k
         self.min_coverage = min_coverage
         self.read_length = read_length
-        self.base_map = {0: 'A', 1: 'T', 2: 'C', 3: 'G', 4: 'N'}
-        self.base_reverse_map = {'A': 0, 'T': 1, 'C': 2, 'G': 3, 'N': 4}
+        self.max_mismatches = max_mismatches
+        self.base_map = {0: 'A', 1: 'T', 2: 'C', 3: 'G'}
+        self.base_reverse_map = {'A': 0, 'T': 1, 'C': 2, 'G': 3}
         
     def create_kmers(self, read: np.ndarray) -> List[str]:
         """리드에서 k-mer 생성"""
@@ -58,13 +59,11 @@ class DBGHamiltonReconstructor:
         return edges, weights
 
     def find_hamilton_path(self, edges: Dict, weights: Dict) -> List[str]:
-        """해밀턴 경로 찾기 (Greedy approach)"""
+        """해밀턴 경로 찾기 (미스매치 개수 기준)"""
         if not edges:
             return []
             
-        # 시작 노드 선택 (가장 많은 출력 간선을 가진 노드)
         start_node = max(edges.keys(), key=lambda x: len(edges[x]))
-        
         path = [start_node]
         visited = {start_node}
         
@@ -73,14 +72,18 @@ class DBGHamiltonReconstructor:
             if current not in edges:
                 break
                 
-            # 가중치가 가장 높은 미방문 이웃 선택
             next_node = None
-            max_weight = -1
+            max_weight = self.min_coverage
             
             for neighbor in edges[current]:
-                if neighbor not in visited and weights[(current, neighbor)] > max_weight:
-                    next_node = neighbor
-                    max_weight = weights[(current, neighbor)]
+                weight = weights[(current, neighbor)]
+                if neighbor not in visited and weight > max_weight:
+                    # 미스매치 개수 계산
+                    mismatches = sum(1 for i in range(self.k-1) 
+                                   if current[i+1] != neighbor[i])
+                    if mismatches <= self.max_mismatches:
+                        next_node = neighbor
+                        max_weight = weight
             
             if next_node is None:
                 break
