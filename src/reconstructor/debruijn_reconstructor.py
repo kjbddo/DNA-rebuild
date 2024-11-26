@@ -39,12 +39,18 @@ class DeBruijnReconstructor:
         # 그래프의 간선과 가중치를 저장할 딕셔너리
         edges = defaultdict(set)  # prefix -> set of suffixes
         weights = defaultdict(int) # (prefix, suffix) -> weight
+        nodes = set()  # 모든 노드(k-1 mer) 저장
+        total_edges = 0  # 실제 간선 수 추적
         
         # 각 리드에서 k-mer를 추출하여 그래프 구축
         total_reads = len(reads)
         for i, read in enumerate(reads):
             kmers = self.create_kmers(read, self.k)
             for prefix, suffix in kmers:
+                nodes.add(prefix)
+                nodes.add(suffix)
+                if suffix not in edges[prefix]:
+                    total_edges += 1
                 edges[prefix].add(suffix)
                 weights[(prefix, suffix)] += 1
                 
@@ -52,8 +58,8 @@ class DeBruijnReconstructor:
                 print(f"\r진행률: {((i+1)/total_reads)*100:.1f}% ({i+1}/{total_reads} 리드)", end="")
                 
         print("\n\n=== 그래프 구축 완료 ===")
-        print(f"노드 수: {len(edges):,}")
-        print(f"간선 수: {sum(len(suffixes) for suffixes in edges.values()):,}")
+        print(f"노드 수: {len(nodes):,}")  # 실제 노드 수 (고유한 k-1 mer의 수)
+        print(f"간선 수: {total_edges:,}")  # 실제 간선 수
         
         return edges, weights
 
@@ -136,25 +142,25 @@ class DeBruijnReconstructor:
         print(f"\n재구성된 시퀀스 길이: {len(reconstructed)}bp")
         
         # 재구성된 시퀀스 저장
-        save_reconstructed_sequence(reconstructed, reads_file, "debruijn")
+        bin_path, txt_path = save_reconstructed_sequence(reconstructed, reads_file, "debruijn")
         
-        return reconstructed
+        return bin_path, txt_path
 
 if __name__ == "__main__":
     generator = DNASequence()
-    bin_path, txt_path = generator.save_sequence(10**8, "test.bin")
-    bin_path, txt_path = generator.save_reads(bin_path, 100, 41, 10**9)
+    bin_path, txt_path = generator.save_sequence(10**5, "test.bin")
+    reads_bin_path, reads_txt_path = generator.save_reads(bin_path, 100, 41, 10**5)
     
     reconstructor = DeBruijnReconstructor()
     
     print("De Bruijn 시퀀스 재구성 시작")
     start_time = time.time()
-    reconstructor.reconstruct(bin_path)
+    reconstructed_bin_path, reconstructed_txt_path = reconstructor.reconstruct(reads_bin_path)
     end_time = time.time()
     
     print(f"\n실행 시간: {end_time - start_time:.2f}초")
     
-    original_file = "data/original/sequence_10000bp.bin"
-    reconstructed_file = "data/reconstructed/debruijn_sequence_10000bp_reads_100bp.bin"
+    original_file = bin_path
+    reconstructed_file = reconstructed_bin_path
     compare_sequences(original_file, reconstructed_file)
 

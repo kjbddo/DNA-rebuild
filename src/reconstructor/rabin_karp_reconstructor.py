@@ -119,22 +119,22 @@ class RabinKarpReconstructor:
         print(f"\n\n재구성된 시퀀스 길이: {len(reconstructed)}bp")
         
         # 재구성된 시퀀스 저장
-        save_reconstructed_sequence(reconstructed, reads_file, "rabin-karp")
+        bin_path, txt_path = save_reconstructed_sequence(reconstructed, reads_file, "rabin-karp")
         
-        return reconstructed
+        return bin_path, txt_path
 
 if __name__ == "__main__":
     generator = DNASequence()
     bin_path, txt_path = generator.save_sequence(10000, "test.bin")
-    bin_path, txt_path = generator.save_reads(bin_path, 100, 50, 10000)
+    reads_bin_path, reads_txt_path = generator.save_reads(bin_path, 100, 50, 10000)
     reconstructor = RabinKarpReconstructor()
     
     start_time = time.time()
-    reconstructor.reconstruct(bin_path)
+    reconstructed_bin_path, reconstructed_txt_path = reconstructor.reconstruct(reads_bin_path)
     end_time = time.time()
     
     print(f"\n실행 시간: {end_time - start_time:.2f}초")
     
-    original_file = "data/original/sequence_10000bp.bin"
-    reconstructed_file = "data/reconstructed/rabin-karp_sequence_10000bp_reads_100bp.bin"
+    original_file = bin_path
+    reconstructed_file = reconstructed_bin_path
     compare_sequences(original_file, reconstructed_file)
