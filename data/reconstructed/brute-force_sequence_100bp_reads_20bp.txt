@@ -1,0 +1,6 @@
+# Reconstructed DNA Sequence (brute-force)
+# Length: 100bp
+# Original reads file: /Users/cuhun/Desktop/DG/알고리즘/플젝/Project/data/reads/sequence_100bp_reads_20bp.bin
+
+AAAAAGGAATTTGACCCAATTTGACCCAATCGAGTCTTCACGAGTCTTCATAAGGCCACT
+TAAGGCCACTCATCTTTCACCATCTTTCACCGGGAAAATA

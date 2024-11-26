@@ -32,7 +32,7 @@ class TestDeBruijnReconstructor(unittest.TestCase):
         self.reads_bin, _ = self.generator.save_reads(
             self.bin_path,
             read_length=self.read_length,
-            coverage=self.coverage
+            overlap=50,
         )
     
     def test_debruijn_reconstruction(self):

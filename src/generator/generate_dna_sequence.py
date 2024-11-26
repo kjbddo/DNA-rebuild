@@ -2,7 +2,7 @@ import glob
 import numpy as np
 import random
 import os
-from typing import Generator, BinaryIO, Tuple, List
+from typing import Generator, BinaryIO, TextIO, Tuple, List
 
 class DNASequence:
     def __init__(self, seed: int = None):
@@ -80,119 +80,131 @@ class DNASequence:
         return bin_path, txt_path
 
     def generate_reads_stream(self, file: BinaryIO, total_length: int, read_length: int,
-                            coverage: int = 30) -> Generator[np.ndarray, None, None]:
-        """스트리밍 방식으로 리드 생성"""
-        # 모든 계산을 정수형으로 보장
-        read_count = int((total_length * coverage) // read_length)
-        max_start_pos = int(total_length - read_length)
+                             overlap: int = 50) -> Generator[np.ndarray, None, None]:
+        """스트리밍 방식으로 리드 생성 (overlap 기반)
         
-        # read_count가 1보다 작으면 안됨
-        if read_count <= 1:
-            step_size = 1
-        else:
-            step_size = max(1, int(max_start_pos // (read_count - 1)))
-        
-        first_read = True
-        
-        for start_pos in range(0, max_start_pos + 1, step_size):
-            file.seek(8 + start_pos)  # 8바이트 헤더 건너뛰기
-            read = np.fromfile(file, dtype=np.uint8, count=read_length)
+        Args:
+            file: 바이너리 파일 객체
+            total_length: 전체 시퀀스 길이
+            read_length: 각 리드의 길이
+            overlap: 연속된 리드 간의 겹치는 염기 수
+        """
+        try:
+            # overlap 유효성 검사
+            if overlap >= read_length:
+                raise ValueError(f"overlap({overlap})이 read_length({read_length})보다 크거나 같습니다")
             
-            if len(read) == read_length:
-                if first_read:
-                    print(f"첫 번째 리드: {self.sequence_to_string(read)}")
-                    first_read = False
-                yield read
+            # 각 리드의 시작 위치 계산
+            step_size = read_length - overlap
+            # range에 들어가는 값들을 정수형으로 명시적 변환
+            start = 0
+            # 마지막 리드가 시퀀스의 끝부분을 포함하도록 end 위치 수정
+            end = total_length - read_length + 1
+            step = int(step_size)
+            read_positions = list(range(start, end, step))
+            
+            # 마지막 위치가 시퀀스의 끝부분을 포함하지 않는 경우, 마지막 리드 추가
+            if read_positions[-1] + read_length < total_length:
+                read_positions.append(total_length - read_length)
+            
+            first_read = True
+            for start_pos in read_positions:
+                # 헤더(8바이트) 이후부터 읽기
+                file.seek(8 + start_pos)
+                read = np.fromfile(file, dtype=np.uint8, count=read_length)
+                
+                if len(read) == read_length:
+                    if first_read:
+                        print(f"\n첫 번째 리드: {self.sequence_to_string(read)}")
+                        first_read = False
+                    yield read
+                else:
+                    print(f"\n경고: 불완전한 리드 발견 (위치: {start_pos}, 길이: {len(read)})")
+                    
+        except Exception as e:
+            print(f"리드 생성 중 오류 발생: {str(e)}")
 
-    def save_reads(self, sequence_file: str, read_length: int = 100, coverage: int = 30, chunk_size: int = 1000) -> Tuple[str, str]:
-        """시퀀스로부터 리드를 생성하고 저장 (청크 단위로 처리)"""
-        # 프로젝트 루트 디렉토리 설정
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        reads_dir = os.path.join(project_root, 'data', 'reads')
-        os.makedirs(reads_dir, exist_ok=True)
-        
-        # 리드 길이를 포함한 파일명 생성
-        base_filename = f"{sequence_file.split('_')[1].split('.')[0]}_reads_{read_length}bp"
-        reads_bin = os.path.join(reads_dir, f"{base_filename}.bin")
-        reads_txt = os.path.join(reads_dir, f"{base_filename}.txt")
-        
-        # 동일한 리드 길이의 가장 최근 파일 찾기
-        existing_files = [f for f in os.listdir(reads_dir) if f.startswith(f"reads_{read_length}bp_") and f.endswith('.bin')]
-        if existing_files:
-            latest_file = max(existing_files)
-            existing_bin = os.path.join(reads_dir, latest_file)
-            existing_txt = os.path.join(reads_dir, latest_file.replace('.bin'))
-            
-            if os.path.exists(existing_bin) and os.path.exists(existing_txt):
-                print(f"\n동일한 리드 길이의 기존 파일을 발견했습니다:")
-                print(f"바이너리 파일: {existing_bin}")
-                return existing_bin, existing_txt
-        
+    def save_reads(self, sequence_file: str, read_length: int = 100, overlap: int = 50, 
+                  chunk_size: int = 1000) -> Tuple[str, str]:
+        """시퀀스로부터 리드를 생성하고 저장 (overlap 기반)"""
         try:
             with open(sequence_file, 'rb') as f:
                 # 시퀀스 길이 읽기
-                total_length = np.fromfile(f, dtype=np.uint64, count=1)[0]
-                read_count = (total_length * coverage) // read_length
+                total_length = int(np.fromfile(f, dtype=np.uint64, count=1)[0])
                 
-                print(f"\n리드 생성 시작:")
-                print(f"총 시퀀스 길이: {total_length:,}bp")
+                # 생성될 총 리드 수 계산
+                step_size = int(read_length - overlap)
+                if step_size <= 0:
+                    raise ValueError(f"overlap({overlap})이 read_length({read_length})보다 크거나 같습니다")
+                    
+                read_count = int((total_length - read_length) // step_size + 1)
+                
+                print(f"\n=== 리드 생성 정보 ===")
+                print(f"시퀀스 길이: {total_length:,}bp")
                 print(f"리드 길이: {read_length}bp")
-                print(f"목표 커버리지: {coverage}x")
+                print(f"리드 간 겹침: {overlap}bp")
+                print(f"리드 간격: {step_size}bp")
                 print(f"생성할 총 리드 수: {read_count:,}")
                 
-                # 헤더 정보 저장
+                # 데이터 디렉토리 설정
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                reads_dir = os.path.join(project_root, 'data', 'reads')
+                os.makedirs(reads_dir, exist_ok=True)
+                
+                # 파일명 생성
+                base_filename = f"sequence_{total_length}bp_reads_{read_length}bp"
+                reads_bin = os.path.join(reads_dir, f"{base_filename}.bin")
+                reads_txt = os.path.join(reads_dir, f"{base_filename}.txt")
+
+                # 헤더 정보 저장 (read_length, read_count)
                 with open(reads_bin, 'wb') as bin_f, open(reads_txt, 'w') as txt_f:
-                    np.array([read_length, read_count], dtype=np.uint64).tofile(bin_f)
-                
-                # 청크 단위로 리드 생성 및 저장
-                current_read = 0
-                chunk_reads = []
-                last_progress = 0
-                
-                for read in self.generate_reads_stream(f, total_length, read_length, coverage):
-                    chunk_reads.append(read)
-                    current_read += 1
+                    # 바이너리 파일 헤더
+                    header = np.array([read_length, read_count], dtype=np.uint64)
+                    header.tofile(bin_f)
                     
-                    # 진행률 표시 (1% 단위로)
-                    progress = (current_read * 100) // read_count
-                    if progress > last_progress:
-                        print(f"진행률: {progress}% ({current_read:,}/{read_count:,} 리드 생성됨)", end='\r')
-                        last_progress = progress
+                    # 리드 생성 및 저장
+                    current_read = 0
+                    chunk_reads = []
                     
-                    # 청크가 차면 파일에 저장
-                    if len(chunk_reads) >= chunk_size:
-                        self._save_reads_chunk(chunk_reads, reads_bin, reads_txt)
-                        chunk_reads = []
-                
-                # 남은 리드 저장
-                if chunk_reads:
-                    self._save_reads_chunk(chunk_reads, reads_bin, reads_txt)
-                
-                print(f"\n\n리드 생성 완료!")
+                    for read in self.generate_reads_stream(f, total_length, read_length, overlap):
+                        chunk_reads.append(read)
+                        current_read += 1
+                        
+                        # 진행률 표시
+                        if current_read % 1000 == 0:
+                            progress = int((current_read/read_count)*100)
+                            print(f"\r진행률: {progress}% ({current_read:,}/{read_count:,} 리드)", end="")
+                        
+                        # 청크 단위로 저장
+                        if len(chunk_reads) >= chunk_size:
+                            # 바이너리 파일에 저장
+                            for chunk_read in chunk_reads:
+                                chunk_read.tofile(bin_f)
+                            # 텍스트 파일에 저장
+                            for chunk_read in chunk_reads:
+                                read_str = self.sequence_to_string(chunk_read)
+                                txt_f.write(read_str + '\n')
+                            chunk_reads = []
+                    
+                    # 남은 리드 저장
+                    if chunk_reads:
+                        # 바이너리 파일에 저장
+                        for chunk_read in chunk_reads:
+                            chunk_read.tofile(bin_f)
+                        # 텍스트 파일에 저장
+                        for chunk_read in chunk_reads:
+                            read_str = self.sequence_to_string(chunk_read)
+                            txt_f.write(read_str + '\n')
+
+                print(f"\n\n=== 리드 생성 완료 ===")
                 print(f"바이너리 파일: {reads_bin}")
-                
+                print(f"텍스트 파일: {reads_txt}")
                 return reads_bin, reads_txt
                 
-        except FileNotFoundError:
-            print(f"시퀀스 파일을 찾을 수 없습니다: {sequence_file}")
-            return "", ""
         except Exception as e:
-            print(f"리드 생성 중 오류 발생: {str(e)}")
+            print(f"\n리드 생성 중 오류 발생: {str(e)}")
             return "", ""
 
-    def _save_reads_chunk(self, chunk_reads: List[np.ndarray], bin_path: str, txt_path: str):
-        """청크 단위로 리드를 파일에 저장"""
-        # 바이너리로 저장
-        with open(bin_path, 'ab') as bin_f:
-            for read in chunk_reads:
-                read.tofile(bin_f)
-        
-        # 텍스트로 저장
-        with open(txt_path, 'a') as txt_f:
-            for read in chunk_reads:
-                read_str = ''.join(self.base_map[b] for b in read)
-                txt_f.write(read_str + '\n')
-                
     def find_file_pairs(self) -> List[Tuple[str, str, int]]:
         """리드 파일과 해당하는 원본 파일, 리드 길이를 찾아 반환"""
         pairs = []
@@ -219,6 +231,6 @@ if __name__ == "__main__":
     generator = DNASequence()
     bin_path, txt_path = generator.save_sequence(10000, "test.bin")
     print(f"생성된 파일: {bin_path}")
-    bin_path, txt_path = generator.save_reads(bin_path, 100, 30, 1000)
+    bin_path, txt_path = generator.save_reads(bin_path, 100, 50, 1000)
     print(f"생성된 파일: {bin_path}")
     

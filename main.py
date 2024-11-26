@@ -34,7 +34,7 @@ if __name__ == "__main__":
     reads_path = generator.save_reads(
         sequence_file=bin_path,
         read_length=100,    # 100bp 리드
-        coverage=30         # 30x 커버리지
+        overlap=50         # 50bp overlap
     )
     
     # 각 알고리즘으로 재구성 테스트

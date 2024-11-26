@@ -1,33 +1,53 @@
 import numpy as np
-from typing import Generator, List, Dict
+from typing import Generator, List, Dict, Tuple
 from collections import defaultdict
+import os
 
 def read_reads_streaming(file_path: str, read_length: int = 100, chunk_size: int = 1000) -> Generator[List[np.ndarray], None, None]:
     """바이너리 파일에서 리드를 청크 단위로 읽는 함수"""
     try:
         with open(file_path, 'rb') as f:
-            # 헤더 정보 읽기
-            header = np.fromfile(f, dtype=np.uint64, count=2)
-            stored_read_length = header[0]
-            total_reads = header[1]
+            # 헤더 정보 읽기 (read_length, num_reads)
+            read_length_from_file = int(np.fromfile(f, dtype=np.uint64, count=1)[0])
+            num_reads = int(np.fromfile(f, dtype=np.uint64, count=1)[0])
             
-            if stored_read_length != read_length:
-                print(f"경고: 저장된 리드 길이({stored_read_length})가 요청된 길이({read_length})와 다릅니다")
+            print(f"\n=== 리드 파일 정보 ===")
+            print(f"총 리드 수: {num_reads:,}")
+            print(f"리드 길이: {read_length}bp")
             
             chunk = []
-            while True:
-                read = np.fromfile(f, dtype=np.uint8, count=read_length)
-                
-                if len(read) < read_length:
-                    if chunk:
-                        yield chunk
+            reads_processed = 0
+            
+            while reads_processed < num_reads:
+                # 청크 크기만큼의 데이터를 한 번에 읽기
+                chunk_data = f.read(read_length * chunk_size)
+                if not chunk_data:
                     break
                 
-                chunk.append(read)
+                # 읽은 데이터를 리드 길이만큼 분할
+                for i in range(0, len(chunk_data), read_length):
+                    read_data = chunk_data[i:i + read_length]
+                    if len(read_data) < read_length:
+                        break
+                    
+                    # 바이트 데이터를 numpy 배열로 변환
+                    read = np.frombuffer(read_data, dtype=np.uint8)
+                    chunk.append(read)
+                    reads_processed += 1
+                    
+                    # 청크가 가득 차면 yield
+                    if len(chunk) >= chunk_size:
+                        yield chunk
+                        chunk = []
                 
-                if len(chunk) >= chunk_size:
-                    yield chunk
-                    chunk = []
+                if reads_processed % 10000 == 0:
+                    print(f"\r진행률: {(reads_processed/num_reads)*100:.1f}% ({reads_processed:,}/{num_reads:,} 리드)", end="")
+            
+            # 마지막 청크 처리
+            if chunk:
+                yield chunk
+                
+            print(f"\n\n처리된 총 리드 수: {reads_processed:,}")
             
     except FileNotFoundError:
         print(f"파일을 찾을 수 없습니다: {file_path}")
@@ -54,7 +74,7 @@ def evaluate_accuracy_streaming(original_file: str, reconstructed: np.ndarray, c
         
         with open(original_file, 'rb') as f:
             while True:
-                chunk = f.read(chunk_size)
+                chunk = f.read(int(chunk_size))
                 if not chunk:
                     break
                 
@@ -63,13 +83,13 @@ def evaluate_accuracy_streaming(original_file: str, reconstructed: np.ndarray, c
                 
                 if total_bases + chunk_size > len(reconstructed):
                     # 재구성된 시퀀스가 더 짧은 경우
-                    chunk_size = len(reconstructed) - total_bases
+                    chunk_size = int(len(reconstructed) - total_bases)
                     if chunk_size <= 0:
                         break
                     original_chunk = original_chunk[:chunk_size]
                 
                 # 현재 청크에서 일치하는 염기 수 계산
-                matches = np.sum(original_chunk == reconstructed[total_bases:total_bases + chunk_size])
+                matches = int(np.sum(original_chunk == reconstructed[total_bases:total_bases + chunk_size]))
                 total_matches += matches
                 total_bases += chunk_size
         
@@ -139,4 +159,59 @@ def calculate_coverage(reads: List[str], position: int) -> int:
     for read in reads:
         if position < len(read):
             coverage += 1
-    return coverage 
+    return coverage
+
+def save_reconstructed_sequence(reconstructed: np.ndarray, reads_file: str, method: str) -> Tuple[str, str]:
+    """재구성된 시퀀스를 바이너리와 텍스트 파일로 저장
+    
+    Args:
+        reconstructed: 재구성된 시퀀스 (numpy array)
+        reads_file: 원본 리드 파일 경로
+        method: 사용된 재구성 방법 (예: 'brute-force', 'debruijn' 등)
+    
+    Returns:
+        Tuple[str, str]: (바이너리 파일 경로, 텍스트 파일 경로)
+    """
+    try:
+        # 프로젝트 루트 및 저장 디렉토리 설정
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        reconstructed_dir = os.path.join(project_root, 'data', 'reconstructed')
+        os.makedirs(reconstructed_dir, exist_ok=True)
+        
+        # 파일명 생성
+        base_name = os.path.splitext(os.path.basename(reads_file))[0]
+        reconstructed_base = f"{method}_{base_name}"
+        bin_path = os.path.join(reconstructed_dir, f"{reconstructed_base}.bin")
+        txt_path = os.path.join(reconstructed_dir, f"{reconstructed_base}.txt")
+        
+        # 바이너리 파일로 저장
+        with open(bin_path, 'wb') as f:
+            # 헤더: 시퀀스 길이
+            np.array([len(reconstructed)], dtype=np.uint64).tofile(f)
+            # 시퀀스 데이터
+            reconstructed.tofile(f)
+        
+        # 텍스트 파일로 저장
+        num_to_base = {0: 'A', 1: 'T', 2: 'C', 3: 'G', 4: 'N'}
+        with open(txt_path, 'w') as f:
+            f.write(f"# Reconstructed DNA Sequence ({method})\n")
+            f.write(f"# Length: {len(reconstructed)}bp\n")
+            f.write(f"# Original reads file: {reads_file}\n\n")
+            
+            # 시퀀스를 문자열로 변환하여 저장
+            sequence = ''.join(num_to_base[b] for b in reconstructed)
+            # 60bp씩 나누어 저장
+            for i in range(0, len(sequence), 60):
+                f.write(sequence[i:i+60] + '\n')
+        
+        print(f"\n=== 재구성된 시퀀스 저장 완료 ===")
+        print(f"방법: {method}")
+        print(f"시퀀스 길이: {len(reconstructed):,}bp")
+        print(f"바이너리 파일: {bin_path}")
+        print(f"텍스트 파일: {txt_path}")
+        
+        return bin_path, txt_path
+        
+    except Exception as e:
+        print(f"시퀀스 저장 중 오류 발생: {str(e)}")
+        return "", ""
