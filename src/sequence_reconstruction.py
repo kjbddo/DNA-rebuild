@@ -151,9 +151,9 @@ def save_reconstructed_sequence(reconstructed: np.ndarray, reads_file: str, meth
             
             # 시퀀스를 문자열로 변환하여 저장
             sequence = ''.join(num_to_base[b] for b in reconstructed)
-            # 60bp씩 나누어 저장
-            for i in range(0, len(sequence), 60):
-                f.write(sequence[i:i+60] + '\n')
+            # 100bp씩 나누어 저장
+            for i in range(0, len(sequence), 100):
+                f.write(sequence[i:i+100] + '\n')
         
         print(f"\n=== 재구성된 시퀀스 저장 완료 ===")
         print(f"방법: {method}")
