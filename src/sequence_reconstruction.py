@@ -56,55 +56,6 @@ def read_reads_streaming(file_path: str, read_length: int = 100, chunk_size: int
         print(f"파일 읽기 중 오류 발생: {str(e)}")
         yield []
 
-def evaluate_accuracy_streaming(original_file: str, reconstructed: np.ndarray, chunk_size: int = 1000) -> float:
-    """
-    재구성된 시퀀스의 정확도를 평가하는 함수
-    
-    Args:
-        original_file (str): 원본 시퀀스 파일 경로
-        reconstructed (np.ndarray): 재구성된 시퀀스
-        chunk_size (int): 한 번에 비교할 청크의 크기
-    
-    Returns:
-        float: 정확도 (백분율)
-    """
-    try:
-        total_matches = 0
-        total_bases = 0
-        
-        with open(original_file, 'rb') as f:
-            while True:
-                chunk = f.read(int(chunk_size))
-                if not chunk:
-                    break
-                
-                original_chunk = np.frombuffer(chunk, dtype=np.uint8)
-                chunk_size = len(original_chunk)
-                
-                if total_bases + chunk_size > len(reconstructed):
-                    # 재구성된 시퀀스가 더 짧은 경우
-                    chunk_size = int(len(reconstructed) - total_bases)
-                    if chunk_size <= 0:
-                        break
-                    original_chunk = original_chunk[:chunk_size]
-                
-                # 현재 청크에서 일치하는 염기 수 계산
-                matches = int(np.sum(original_chunk == reconstructed[total_bases:total_bases + chunk_size]))
-                total_matches += matches
-                total_bases += chunk_size
-        
-        if total_bases == 0:
-            return 0.0
-            
-        return (total_matches / total_bases) * 100.0
-        
-    except FileNotFoundError:
-        print(f"파일을 찾을 수 없습니다: {original_file}")
-        return 0.0
-    except Exception as e:
-        print(f"정확도 평가 중 오류 발생: {str(e)}")
-        return 0.0
-
 def create_kmer_index(reads: List[str], k: int) -> Dict[str, List[int]]:
     """
     k-mer 인덱스를 생성하는 함수
