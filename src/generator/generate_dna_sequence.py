@@ -37,24 +37,17 @@ class DNASequence:
         # 디렉토리가 없으면 생성
         os.makedirs(original_dir, exist_ok=True)
         
-        # 타임스탬프를 포함한 파일명 생성
-  
+        # 타일명 생성
         base_filename = f"sequence_{total_length}bp"
         bin_path = os.path.join(original_dir, f"{base_filename}.bin")
         txt_path = os.path.join(original_dir, f"{base_filename}_first10000bp.txt")
         
-        # 동일한 길이의 가장 최근 파일 찾기
-        existing_files = [f for f in os.listdir(original_dir) if f.startswith(f"sequence_{total_length}bp_") and f.endswith('.bin')]
-        if existing_files:
-            latest_file = max(existing_files)
-            existing_bin = os.path.join(original_dir, latest_file)
-            existing_txt = os.path.join(original_dir, latest_file.replace('.bin', '_first10000bp.txt'))
-            
-            if os.path.exists(existing_bin) and os.path.exists(existing_txt):
-                print(f"\n동일한 길이의 기존 시퀀스 파일을 발견했습니다:")
-                print(f"바이너리 파일: {existing_bin}")
-                print(f"텍스트 파일: {existing_txt}")
-                return existing_bin, existing_txt
+        # 기존 파일 확인
+        if os.path.exists(bin_path) and os.path.exists(txt_path):
+            print(f"\n동일한 길이의 기존 시퀀스 파일이 존재합니다:")
+            print(f"바이너리 파일: {bin_path}")
+            print(f"텍스트 파일: {txt_path}")
+            return bin_path, txt_path
         
         with open(bin_path, 'wb') as f:
             np.array([total_length], dtype=np.uint64).tofile(f)
@@ -129,9 +122,25 @@ class DNASequence:
         """시퀀스로부터 리드를 생성하고 저장 (overlap 기반)"""
         try:
             with open(sequence_file, 'rb') as f:
-                # 시퀀스 길이 읽기
                 total_length = int(np.fromfile(f, dtype=np.uint64, count=1)[0])
                 
+                # 데이터 디렉토리 설정
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                reads_dir = os.path.join(project_root, 'data', 'reads')
+                os.makedirs(reads_dir, exist_ok=True)
+                
+                # 파일명 생성
+                base_filename = f"sequence_{total_length}bp_reads_{read_length}bp"
+                reads_bin = os.path.join(reads_dir, f"{base_filename}.bin")
+                reads_txt = os.path.join(reads_dir, f"{base_filename}.txt")
+
+                # 기존 파일 확인
+                if os.path.exists(reads_bin) and os.path.exists(reads_txt):
+                    print(f"\n동일한 설정의 기존 리드 파일이 존재합니다:")
+                    print(f"바이너리 파일: {reads_bin}")
+                    print(f"텍스트 파일: {reads_txt}")
+                    return reads_bin, reads_txt
+
                 # 생성될 총 리드 수 계산
                 step_size = int(read_length - overlap)
                 if step_size <= 0:
@@ -229,8 +238,8 @@ class DNASequence:
 
 if __name__ == "__main__":
     generator = DNASequence()
-    bin_path, txt_path = generator.save_sequence(10000, "test.bin")
+    bin_path, txt_path = generator.save_sequence(10**4, "test.bin")
     print(f"생성된 파일: {bin_path}")
-    bin_path, txt_path = generator.save_reads(bin_path, 100, 50, 1000)
+    bin_path, txt_path = generator.save_reads(bin_path, 100, 50, 10**4)
     print(f"생성된 파일: {bin_path}")
     

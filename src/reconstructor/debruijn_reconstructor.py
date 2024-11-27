@@ -145,8 +145,8 @@ class DeBruijnReconstructor:
 
 if __name__ == "__main__":
     generator = DNASequence()
-    bin_path, txt_path = generator.save_sequence(10**5, "test.bin")
-    reads_bin_path, reads_txt_path = generator.save_reads(bin_path, 50, 25, 10**5)
+    bin_path, txt_path = generator.save_sequence(10**8, "test.bin")
+    reads_bin_path, reads_txt_path = generator.save_reads(bin_path, 100, 50, 10**8)
     
     reconstructor = DeBruijnReconstructor()
     
