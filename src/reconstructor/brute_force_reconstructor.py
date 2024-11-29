@@ -120,7 +120,7 @@ if __name__ == "__main__":
     overlap = 20
     
     generator = DNASequence()
-    bin_path, txt_path = generator.save_sequence(10000, "test.bin")
+    bin_path, txt_path = generator.save_sequence(chunk_size, "test.bin")
     reads_bin_path, reads_txt_path = generator.save_reads(bin_path, read_length, overlap, chunk_size)
     
     reconstructor = BruteForceReconstructor(read_length, max_mismatches, chunk_size)

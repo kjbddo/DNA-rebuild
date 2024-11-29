@@ -147,11 +147,11 @@ if __name__ == "__main__":
     k = 31
     read_length = 100
     max_mismatches = 2
-    chunk_size = 10000
+    chunk_size = 10**7
     overlap = 50
     
     generator = DNASequence()
-    bin_path, txt_path = generator.save_sequence(10**8, "test.bin")
+    bin_path, txt_path = generator.save_sequence(chunk_size, "test.bin")
     reads_bin_path, reads_txt_path = generator.save_reads(bin_path, read_length, overlap, chunk_size)
     
     reconstructor = DeBruijnReconstructor(k, read_length, max_mismatches, chunk_size)
