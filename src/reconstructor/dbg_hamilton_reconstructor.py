@@ -59,11 +59,25 @@ class DBGHamiltonReconstructor:
         return edges, weights
 
     def find_hamilton_path(self, edges: Dict, weights: Dict) -> List[str]:
-        """해밀턴 경로 찾기 (미스매치 개수 기준)"""
+        """해밀턴 경로 찾기"""
         if not edges:
             return []
             
-        start_node = max(edges.keys(), key=lambda x: len(edges[x]))
+        # 시작 노드 선택 (들어오는 간선보다 나가는 간선이 많은 노드)
+        in_degree = defaultdict(int)
+        out_degree = defaultdict(int)
+        
+        for node, suffixes in edges.items():
+            out_degree[node] = len(suffixes)
+            for suffix in suffixes:
+                in_degree[suffix] += 1
+                
+        start_node = next(iter(edges.keys()))  # 기본값
+        for node in edges:
+            if out_degree[node] - in_degree[node] == 1:
+                start_node = node
+                break
+                
         path = [start_node]
         visited = {start_node}
         
@@ -73,17 +87,18 @@ class DBGHamiltonReconstructor:
                 break
                 
             next_node = None
-            max_weight = self.min_coverage
+            max_weight = 0
             
             for neighbor in edges[current]:
                 weight = weights[(current, neighbor)]
-                if neighbor not in visited and weight > max_weight:
+                if neighbor not in visited:
                     # 미스매치 개수 계산
                     mismatches = sum(1 for i in range(self.k-1) 
                                    if current[i+1] != neighbor[i])
                     if mismatches <= self.max_mismatches:
-                        next_node = neighbor
-                        max_weight = weight
+                        if weight > max_weight:
+                            next_node = neighbor
+                            max_weight = weight
             
             if next_node is None:
                 break
