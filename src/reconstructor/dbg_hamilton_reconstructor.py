@@ -16,11 +16,11 @@ from src.sequence_reconstruction import (
 )
 
 class DBGHamiltonReconstructor:
-    def __init__(self, k: int = 31, min_coverage: int = 2, read_length: int = 100, max_mismatches: int = 2):
+    def __init__(self, k: int, read_length, max_mismatches, chunk_size):
         self.k = k
-        self.min_coverage = min_coverage
         self.read_length = read_length
         self.max_mismatches = max_mismatches
+        self.chunk_size = chunk_size
         self.base_map = {0: 'A', 1: 'T', 2: 'C', 3: 'G'}
         self.base_reverse_map = {'A': 0, 'T': 1, 'C': 2, 'G': 3}
         
@@ -115,7 +115,7 @@ class DBGHamiltonReconstructor:
         
         # 리드 데이터 읽기
         reads_list = []
-        for chunk in read_reads_streaming(reads_file, self.read_length):
+        for chunk in read_reads_streaming(reads_file, self.read_length, self.chunk_size):
             reads_list.extend(chunk)
             
         if not reads_list:
@@ -139,11 +139,17 @@ class DBGHamiltonReconstructor:
         return bin_path, txt_path
 
 if __name__ == "__main__":
+    k = 31
+    read_length = 100
+    max_mismatches = 2
+    chunk_size = 10000
+    overlap = 50
+    
     generator = DNASequence()
     bin_path, txt_path = generator.save_sequence(10000, "test.bin")
-    reads_bin_path, reads_txt_path = generator.save_reads(bin_path, 100, 50, 10000)
+    reads_bin_path, reads_txt_path = generator.save_reads(bin_path, read_length, overlap, chunk_size)
     
-    reconstructor = DBGHamiltonReconstructor()
+    reconstructor = DBGHamiltonReconstructor(k, read_length, max_mismatches, chunk_size)
     
     start_time = time.time()
     reconstructed_bin_path, reconstructed_txt_path = reconstructor.reconstruct(reads_bin_path)

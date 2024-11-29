@@ -15,10 +15,10 @@ from src.sequence_reconstruction import (
 )
 
 class BruteForceReconstructor:
-    def __init__(self, min_coverage: int = 2, read_length: int = 100, max_mismatches: int = 2):
-        self.min_coverage = min_coverage
+    def __init__(self, read_length, max_mismatches, chunk_size):
         self.read_length = read_length
         self.max_mismatches = max_mismatches  # 허용할 최대 미스매치 수
+        self.chunk_size = chunk_size
         self.base_map = {0: 'A', 1: 'T', 2: 'C', 3: 'G'}
         self.base_reverse_map = {'A': 0, 'T': 1, 'C': 2, 'G': 3}
 
@@ -55,7 +55,7 @@ class BruteForceReconstructor:
         print("\n=== 브루트 포스 시퀀스 재구성 시작 ===")
         
         reads_list = []
-        for chunk in read_reads_streaming(reads_file, self.read_length):
+        for chunk in read_reads_streaming(reads_file, self.read_length, self.chunk_size):
             reads_list.extend(chunk)
             
         if not reads_list:
@@ -114,11 +114,16 @@ class BruteForceReconstructor:
         return bin_path, txt_path
 
 if __name__ == "__main__":
+    read_length = 50
+    max_mismatches = 2
+    chunk_size = 10000
+    overlap = 20
+    
     generator = DNASequence()
     bin_path, txt_path = generator.save_sequence(10000, "test.bin")
-    reads_bin_path, reads_txt_path = generator.save_reads(bin_path, 50, 25, 10000)
+    reads_bin_path, reads_txt_path = generator.save_reads(bin_path, read_length, overlap, chunk_size)
     
-    reconstructor = BruteForceReconstructor()
+    reconstructor = BruteForceReconstructor(read_length, max_mismatches, chunk_size)
     
     start_time = time.time()
     reconstructed_bin_path, reconstructed_txt_path = reconstructor.reconstruct(reads_bin_path)

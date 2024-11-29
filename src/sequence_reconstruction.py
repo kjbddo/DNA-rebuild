@@ -3,7 +3,7 @@ from typing import Generator, List, Dict, Tuple
 from collections import defaultdict
 import os
 
-def read_reads_streaming(file_path: str, read_length: int = 100, chunk_size: int = 1000) -> Generator[List[np.ndarray], None, None]:
+def read_reads_streaming(file_path: str, read_length, chunk_size) -> Generator[List[np.ndarray], None, None]:
     """바이너리 파일에서 리드를 청크 단위로 읽는 함수"""
     try:
         with open(file_path, 'rb') as f:
@@ -11,106 +11,45 @@ def read_reads_streaming(file_path: str, read_length: int = 100, chunk_size: int
             read_length_from_file = int(np.fromfile(f, dtype=np.uint64, count=1)[0])
             num_reads = int(np.fromfile(f, dtype=np.uint64, count=1)[0])
             
-            print(f"\n=== 리드 파일 정보 ===")
-            print(f"총 리드 수: {num_reads:,}")
-            print(f"리드 길이: {read_length}bp")
+            if read_length_from_file != read_length:
+                print(f"경고: 파일의 리드 길이({read_length_from_file})와 입력 리드 길이({read_length})가 다릅니다!")
             
             chunk = []
             reads_processed = 0
             
             while reads_processed < num_reads:
-                # 청크 크기만큼의 데이터를 한 번에 읽기
-                chunk_data = f.read(read_length * chunk_size)
-                if not chunk_data:
+                # 청크 크기만큼의 리드 데이터를 한 번에 읽기
+                chunk_data = np.fromfile(f, dtype=np.uint8, count=read_length * chunk_size)
+                if len(chunk_data) == 0:
                     break
                 
-                # 읽은 데이터를 리드 길이만큼 분할
-                for i in range(0, len(chunk_data), read_length):
-                    read_data = chunk_data[i:i + read_length]
-                    if len(read_data) < read_length:
-                        break
-                    
-                    # 바이트 데이터를 numpy 배열로 변환
-                    read = np.frombuffer(read_data, dtype=np.uint8)
-                    chunk.append(read)
-                    reads_processed += 1
-                    
-                    # 청크가 가득 차면 yield
-                    if len(chunk) >= chunk_size:
-                        yield chunk
-                        chunk = []
+                # 읽은 데이터를 리드 단위로 분할
+                num_complete_reads = len(chunk_data) // read_length
+                chunk_data = chunk_data[:num_complete_reads * read_length]
+                reads = np.array_split(chunk_data, num_complete_reads)
+                
+                # 청크에 추가
+                chunk.extend(reads)
+                reads_processed += num_complete_reads
+                
+                # 청크가 가득 차면 yield
+                if len(chunk) >= chunk_size:
+                    yield chunk[:chunk_size]
+                    chunk = chunk[chunk_size:]
                 
                 if reads_processed % 10000 == 0:
                     print(f"\r진행률: {(reads_processed/num_reads)*100:.1f}% ({reads_processed:,}/{num_reads:,} 리드)", end="")
             
-            # 마지막 청크 처리
+            # 남은 청크 처리
             if chunk:
                 yield chunk
                 
-            print(f"\n\n처리된 총 리드 수: {reads_processed:,}")
-            
     except FileNotFoundError:
         print(f"파일을 찾을 수 없습니다: {file_path}")
         yield []
     except Exception as e:
         print(f"파일 읽기 중 오류 발생: {str(e)}")
         yield []
-
-def create_kmer_index(reads: List[str], k: int) -> Dict[str, List[int]]:
-    """
-    k-mer 인덱스를 생성하는 함수
-    
-    Args:
-        reads (List[str]): 리드 목록
-        k (int): k-mer 길이
-    
-    Returns:
-        Dict[str, List[int]]: k-mer를 키로, 해당 k-mer가 등장하는 리드의 인덱스 목록을 값으로 하는 사전
-    """
-    kmer_index = defaultdict(list)
-    for i, read in enumerate(reads):
-        for j in range(len(read) - k + 1):
-            kmer = read[j:j+k]
-            kmer_index[kmer].append(i)
-    return kmer_index
-
-def find_overlaps(reads: List[str], k: int) -> Dict[int, Dict[int, int]]:
-    """
-    리드들 간의 중첩을 찾는 함수
-    
-    Args:
-        reads (List[str]): 리드 목록
-        k (int): 최소 중첩 길이
-    
-    Returns:
-        Dict[int, Dict[int, int]]: 리드 간의 중첩 정보를 담은 그래프
-    """
-    overlaps = defaultdict(lambda: defaultdict(int))
-    for i, read1 in enumerate(reads):
-        for j, read2 in enumerate(reads):
-            if i != j:
-                for overlap_len in range(len(read1), k-1, -1):
-                    if read1.endswith(read2[:overlap_len]):
-                        overlaps[i][j] = overlap_len
-                        break
-    return overlaps
-
-def calculate_coverage(reads: List[str], position: int) -> int:
-    """
-    특정 위치의 커버리지를 계산하는 함수
-    
-    Args:
-        reads (List[str]): 리드 목록
-        position (int): 확인할 위치
-    
-    Returns:
-        int: 해당 위치의 커버리지
-    """
-    coverage = 0
-    for read in reads:
-        if position < len(read):
-            coverage += 1
-    return coverage
 
 def save_reconstructed_sequence(reconstructed: np.ndarray, reads_file: str, method: str) -> Tuple[str, str]:
     """재구성된 시퀀스를 바이너리와 텍스트 파일로 저장

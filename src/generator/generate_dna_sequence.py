@@ -117,8 +117,7 @@ class DNASequence:
         except Exception as e:
             print(f"리드 생성 중 오류 발생: {str(e)}")
 
-    def save_reads(self, sequence_file: str, read_length: int = 100, overlap: int = 50, 
-                  chunk_size: int = 1000) -> Tuple[str, str]:
+    def save_reads(self, sequence_file: str, read_length: int = 100, overlap: int = 50, chunk_size: int = 1000) -> Tuple[str, str]:
         """시퀀스로부터 리드를 생성하고 저장 (overlap 기반)"""
         try:
             with open(sequence_file, 'rb') as f:
@@ -129,18 +128,25 @@ class DNASequence:
                 reads_dir = os.path.join(project_root, 'data', 'reads')
                 os.makedirs(reads_dir, exist_ok=True)
                 
-                # 파일명 생성
-                base_filename = f"sequence_{total_length}bp_reads_{read_length}bp"
+                # 파일명 생성 (리드 길이와 overlap 정보 포함)
+                base_filename = f"sequence_{total_length}bp_reads_{read_length}bp_overlap_{overlap}bp"
                 reads_bin = os.path.join(reads_dir, f"{base_filename}.bin")
                 reads_txt = os.path.join(reads_dir, f"{base_filename}.txt")
-
-                # 기존 파일 확인
+                
+                # 기존 파일 확인 - 정확히 같은 설정의 파일만 재사용
                 if os.path.exists(reads_bin) and os.path.exists(reads_txt):
-                    print(f"\n동일한 설정의 기존 리드 파일이 존재합니다:")
-                    print(f"바이너리 파일: {reads_bin}")
-                    print(f"텍스트 파일: {reads_txt}")
-                    return reads_bin, reads_txt
-
+                    # 기존 파일의 헤더 정보 확인
+                    with open(reads_bin, 'rb') as existing_f:
+                        existing_read_length = int(np.fromfile(existing_f, dtype=np.uint64, count=1)[0])
+                        if existing_read_length == read_length:
+                            print(f"\n동일한 설정의 기존 리드 파일이 존재합니다:")
+                            print(f"바이너리 파일: {reads_bin}")
+                            print(f"텍스트 파일: {reads_txt}")
+                            return reads_bin, reads_txt
+                        else:
+                            print(f"\n기존 파일의 리드 길이({existing_read_length}bp)가 다릅니다.")
+                            print(f"새로운 리드 파일을 생성합니다. (리드 길이: {read_length}bp)")
+                
                 # 생성될 총 리드 수 계산
                 step_size = int(read_length - overlap)
                 if step_size <= 0:
@@ -240,6 +246,6 @@ if __name__ == "__main__":
     generator = DNASequence()
     bin_path, txt_path = generator.save_sequence(10**4, "test.bin")
     print(f"생성된 파일: {bin_path}")
-    bin_path, txt_path = generator.save_reads(bin_path, 100, 50, 10**4)
+    bin_path, txt_path = generator.save_reads(bin_path, 80, 50, 10**4)
     print(f"생성된 파일: {bin_path}")
     
